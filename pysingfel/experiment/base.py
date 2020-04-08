@@ -26,22 +26,16 @@ class Experiment(object):
                 pg.calculate_diffraction_pattern_gpu(mesh, particle, return_type='complex_field'))
 
     def generate_image(self):
-        beam_spectrum = self.beam.generate_new_state()
-        img_stack = 0.
-
-        for spike in beam_spectrum:
-            recidet = ReciprocalDetector(self.det, spike)
-
-            group_complex_pattern = 0.
-            for i, particle_group in enumerate(self.generate_new_sample_state()):
-                group_complex_pattern += self._generate_group_complex_pattern(
-                    recidet, i, particle_group)
-
-            group_pattern = np.abs(group_complex_pattern)**2
-            raw_img = recidet.add_correction_and_quantization(group_pattern)
-            img_stack += raw_img
-
+        img_stack = self.generate_image_stack()
         return self.det.assemble_image_stack(img_stack)
+        
+    def generate_image_stack(self):
+        beam_spectrum = self.beam.generate_new_state()
+        sample_state = self.generate_new_sample_state()
+        img_stack = 0.
+        raw_img = recidet.add_correction_and_quantization(group_pattern)
+        img_stack += raw_img
+        return img_stack
 
     def _generate_group_complex_pattern(self, recidet, i, particle_group):
         positions, orientations = particle_group
