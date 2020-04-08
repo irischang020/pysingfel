@@ -1,4 +1,5 @@
 import numpy as np
+import cupy as cp
 import pysingfel.geometry as psg
 from pysingfel.reciprocal_detector import ReciprocalDetector
 
@@ -45,7 +46,7 @@ class Experiment(object):
     def _generate_group_complex_pattern(self, recidet, i, particle_group):
         positions, orientations = particle_group
 
-        slices = psg.take_n_slices(
+        slices = psg.cpo_take_n_slices(
             volume=self.volumes[i],
             voxel_length=self.voxel_length,
             pixel_momentum=recidet.pixel_position_reciprocal,

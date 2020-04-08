@@ -1,7 +1,7 @@
 import numpy as np
 import time
 from numba import jit
-
+import cupy as cp
 from pysingfel.util import deprecated
 
 from . import convert, mapping
@@ -71,7 +71,7 @@ def take_slice(volume, voxel_length, pixel_momentum, orientation,
     # construct the rotation matrix
     rot_mat = convert.quaternion2rot3d(orientation)
     if inverse:
-        rot_mat = np.linalg.inv(rot_mat)
+        rot_mat = cp.linalg.inv(rot_mat)
 
     # rotate the pixels in the reciprocal space.
     # Notice that at this time, the pixel position is in 3D
@@ -121,3 +121,103 @@ def take_n_slices(volume, voxel_length, pixel_momentum, orientations,
                                       orientations[l], inverse)
 
     return slices_holder
+
+
+def cpo_take_n_slices(volume, voxel_length, pixel_momentum, orientations,
+                  inverse=False):
+    """
+    Take several slices.
+
+    :param volume: The volume to slice from.
+    :param voxel_length: The length unit of the voxel
+    :param pixel_momentum: The coordinate of each pixel in the
+        reciprocal space measured in A.
+    :param orientations: The orientations of the slices.
+    :param inverse: Whether to use the inverse of the rotation or not.
+    :return: n slices.
+    """
+    # Preprocess
+    slice_num = orientations.shape[0]
+    pattern_shape = pixel_momentum.shape[:-1]
+
+    # Create variable to hold the slices
+    slices_holder = np.zeros((slice_num,) + pattern_shape, dtype=volume.dtype)
+
+    for l in range(slice_num):
+        slices_holder[l] = cpo_take_slice(volume, voxel_length, pixel_momentum,
+                                      orientations[l], inverse)
+    #slices_holder[:slice_num] = cpo_take_slice(volume, voxel_length, pixel_momentum,
+    #                                  orientations[:slice_num], inverse)
+    return slices_holder
+
+
+# From ps.take_slice, unwrap get_weight_and_index and extract_slice
+def cpo_take_slice(volume, voxel_length, pixel_momentum, orientation, inverse=False):
+    vn = volume.shape[0]
+    vn2 = vn ** 2
+
+    volume = cp.reshape(cp.array(volume), vn**3)
+    # construct the rotation matrix
+    rot_mat = convert.quaternion2rot3d(orientation)
+    rot_mat = cp.array(rot_mat)
+    if inverse:
+        rot_mat = cp.linalg.inv(rot_mat)
+
+    # rotate the pixels in the reciprocal space.
+    # Notice that at this time, the pixel position is in 3D
+    pixel_momentum = cp.array(pixel_momentum)
+
+    pixel_position = cp.dot(pixel_momentum, rot_mat.T)
+    
+    # Extract the detector shape
+    detector_shape = pixel_position.shape[:-1]
+    pixel_num = np.prod(detector_shape)
+    
+    # Cast the position infor to the shape [pixel number, 3]
+    pixel_position_1d = cp.reshape(pixel_position, (pixel_num, 3))
+
+    # convert_to_voxel_unit
+    pixel_position_1d_voxel_unit = pixel_position_1d / voxel_length
+
+    # shift the center position
+    shift = (vn - 1) / 2.
+    pixel_position_1d_voxel_unit += shift
+
+    # Get one nearest neighbor
+    tmp_index = cp.floor(pixel_position_1d_voxel_unit).astype(np.int64)
+
+    # Generate the holders
+    indexes = cp.zeros((pixel_num, 8), dtype=np.int64)
+    weight = cp.ones((pixel_num, 8), dtype=np.float64)
+
+    # Calculate the floors and the ceilings
+    dfloor = pixel_position_1d_voxel_unit - tmp_index
+    dceiling = 1 - dfloor
+
+    # Assign the correct values to the indexes
+    indexes[:, 0] = vn2 * (tmp_index[:, 0]) + vn * (tmp_index[:, 1]) + (tmp_index[:, 2])
+    indexes[:, 1] = vn2 * (tmp_index[:, 0]) + vn * (tmp_index[:, 1]) + (tmp_index[:, 2]+1)
+    indexes[:, 2] = vn2 * (tmp_index[:, 0]) + vn * (tmp_index[:, 1]+1) + (tmp_index[:, 2])
+    indexes[:, 3] = vn2 * (tmp_index[:, 0]) + vn * (tmp_index[:, 1]+1) + (tmp_index[:, 2]+1)
+    indexes[:, 4] = vn2 * (tmp_index[:, 0]+1) + vn * (tmp_index[:, 1]) + (tmp_index[:, 2])
+    indexes[:, 5] = vn2 * (tmp_index[:, 0]+1) + vn * (tmp_index[:, 1]) + (tmp_index[:, 2]+1)
+    indexes[:, 6] = vn2 * (tmp_index[:, 0]+1) + vn * (tmp_index[:, 1]+1) + (tmp_index[:, 2])
+    indexes[:, 7] = vn2 * (tmp_index[:, 0]+1) + vn * (tmp_index[:, 1]+1) + (tmp_index[:, 2]+1)
+
+    # Assign the correct values to the weight
+    weight[:, 0] = cp.prod(dceiling, axis=-1)
+    weight[:, 1] = dceiling[:, 0] * dceiling[:, 1] * dfloor[:, 2]
+    weight[:, 2] = dceiling[:, 0] * dfloor[:, 1] * dceiling[:, 2]
+    weight[:, 3] = dceiling[:, 0] * dfloor[:, 1] * dfloor[:, 2]
+    weight[:, 4] = dfloor[:, 0] * dceiling[:, 1] * dceiling[:, 2]
+    weight[:, 5] = dfloor[:, 0] * dceiling[:, 1] * dfloor[:, 2]
+    weight[:, 6] = dfloor[:, 0] * dfloor[:, 1] * dceiling[:, 2]
+    weight[:, 7] = cp.prod(dfloor, axis=-1)
+    
+    # Expand the data to merge
+    data_to_merge = volume[indexes]
+
+    # Merge the data
+    data_merged = cp.sum(cp.multiply(weight, data_to_merge), axis=-1)
+
+    return cp.asnumpy(cp.reshape(data_merged, detector_shape))

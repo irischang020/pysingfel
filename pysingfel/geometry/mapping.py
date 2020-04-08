@@ -1,6 +1,7 @@
 import numpy as np
 import time
 from numba import jit
+import cupy as cp
 
 from pysingfel.util import deprecated
 
@@ -24,6 +25,8 @@ def rotate_pixels_in_reciprocal_space(rot_mat, pixels_position):
     """
     return np.dot(pixels_position, rot_mat.T)
 
+def cpo_rotate_pixels_in_reciprocal_space(rot_mat, pixels_position):
+    return cp.dot(pixels_position, rot_mat.T)
 
 ######################################################################
 # Take slice from the volume
