@@ -23,12 +23,12 @@ particleCl.read_pdb(os.path.join(pwd,'../input/pdb/3j03.pdb'), ff='WK')
 # Load beam
 beam = ps.Beam(os.path.join(pwd,'../input/beam/amo86615.beam'))
 
-#geom = os.path.join(pwd,'../input/lcls/amo86615/PNCCD::CalibV1/Camp.0:pnCCD.1/geometry/0-end.data')
-geom = os.path.join(pwd,'../input/lcls/mfxls0816/Jungfrau::CalibV1/MfxEndstation.0:Jungfrau.1/geometry/0-end.data')
+geom = os.path.join(pwd,'../input/lcls/amo86615/PNCCD::CalibV1/Camp.0:pnCCD.1/geometry/0-end.data')
+#geom = os.path.join(pwd,'../input/lcls/mfxls0816/Jungfrau::CalibV1/MfxEndstation.0:Jungfrau.1/geometry/0-end.data')
 
 # Load and initialize the detector
-#det = ps.PnccdDetector(geom=geom, beam=beam)
-det = ps.JungfrauDetector(geom=geom, beam=beam)
+det = ps.PnccdDetector(geom=geom, beam=beam)
+#det = ps.JungfrauDetector(geom=geom, beam=beam)
 
 tic = time.time()
 patternOp = det.get_photons(device='gpu', particle=particleOp)
@@ -38,7 +38,8 @@ print("It took {:.2f} seconds to finish SPI calculation.".format(toc-tic))
 patternCl = det.get_photons(device='gpu', particle=particleCl)
 
 # Calculates 1 diffraction pattern from 1 open chaperones + 1 closed chaperones
-pattern = det.get_fxs_photons_slices(device='gpu', beam_focus_radius=beam.focus_xFWHM/2, jet_radius=1e-4, mesh_length=151, particles={particleOp:numOpen,particleCl:numClosed})
+#pattern = det.get_fxs_photons_slices(device='gpu', beam_focus_radius=beam.focus_xFWHM/2, jet_radius=1e-4, mesh_length=151, particles={particleOp:numOpen,particleCl:numClosed})
+pattern = det.get_fxs_photons_slices(device='gpu', beam_focus_radius=1e-7, jet_radius=1e-4, mesh_length=151, particles={particleOp:numOpen,particleCl:numClosed})
 
 pattern_no_polarization = det.remove_polarization(pattern, res=None)
 np_img = det.assemble_image_stack(pattern_no_polarization)
