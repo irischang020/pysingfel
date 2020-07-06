@@ -47,7 +47,7 @@ class SASEBeam(Beam):
 
         photon_energy = np.linspace(self.mu-50, self.mu+50, self.n_spikes+1).tolist()
         fluences = (self.get_photons_per_pulse()*density_renorm/density_renorm.sum())
-
+        
         return [
             Beam(
                 photon_energy=photon_energy[i],
