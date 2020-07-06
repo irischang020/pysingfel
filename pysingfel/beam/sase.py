@@ -29,8 +29,6 @@ class SASEBeam(Beam):
         """
         For variable beam to return specific instance.
         """
-        # If simple Beam, return itself.
-        # Variable beams should return simple one.
         samples = np.random.normal(self.mu, self.sigma, self.n_spikes*100000)
         
         gkde = stats.gaussian_kde(samples)
